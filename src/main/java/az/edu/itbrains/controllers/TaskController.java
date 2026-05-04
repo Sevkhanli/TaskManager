@@ -1,6 +1,7 @@
 package az.edu.itbrains.controllers;
 
-import az.edu.itbrains.DTOs.request.TaskRequestDTO;
+import az.edu.itbrains.DTOs.request.AdminTaskRequestDTO;
+import az.edu.itbrains.DTOs.request.UserTaskRequestDTO;
 import az.edu.itbrains.DTOs.response.TaskResponseDTO;
 import az.edu.itbrains.enums.TaskStatus;
 import az.edu.itbrains.services.TaskService;
@@ -19,18 +20,20 @@ public class TaskController {
 
     private final TaskService taskService;
 
-    // USER-lər üçün endpoint (assigneeId göndərməyə ehtiyac yoxdur)
+    // --- YARADILMA ---
+
     @PostMapping
-    public ResponseEntity<TaskResponseDTO> createMyTask(@RequestBody TaskRequestDTO request) {
+    public ResponseEntity<TaskResponseDTO> createMyTask(@Valid @RequestBody UserTaskRequestDTO request) {
         return ResponseEntity.ok(taskService.createMyTask(request));
     }
 
-    // ADMIN-lər üçün endpoint
     @PostMapping("/admin")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TaskResponseDTO> createAdminTask(@RequestBody TaskRequestDTO request) {
+    public ResponseEntity<TaskResponseDTO> createAdminTask(@Valid @RequestBody AdminTaskRequestDTO request) {
         return ResponseEntity.ok(taskService.createTaskAsAdmin(request));
     }
+
+    // --- OXUMA ---
 
     @GetMapping
     public ResponseEntity<List<TaskResponseDTO>> getAllActiveTasks() {
@@ -42,9 +45,19 @@ public class TaskController {
         return ResponseEntity.ok(taskService.getTaskById(id));
     }
 
+    // --- YENİLƏNMƏ (UPDATE) ---
+
+    // User öz taskını edit edir
     @PutMapping("/{id}")
-    public ResponseEntity<TaskResponseDTO> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequestDTO request) {
+    public ResponseEntity<TaskResponseDTO> updateTask(@PathVariable Long id, @Valid @RequestBody UserTaskRequestDTO request) {
         return ResponseEntity.ok(taskService.updateTask(id, request));
+    }
+
+    // Admin hər şeyi edit edir (Assignee daxil)
+    @PutMapping("/admin/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TaskResponseDTO> updateTaskByAdmin(@PathVariable Long id, @Valid @RequestBody AdminTaskRequestDTO request) {
+        return ResponseEntity.ok(taskService.updateTaskByAdmin(id, request));
     }
 
     @PatchMapping("/{id}/status")
@@ -58,7 +71,6 @@ public class TaskController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<String> deleteTask(@PathVariable Long id) {
-        String message = taskService.deleteTask(id);
-        return ResponseEntity.ok(message);
+        return ResponseEntity.ok(taskService.deleteTask(id));
     }
 }
