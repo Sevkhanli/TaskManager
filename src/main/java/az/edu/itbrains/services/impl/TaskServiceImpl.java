@@ -28,19 +28,19 @@ public class TaskServiceImpl implements TaskService {
     private final StatusHistoryRepository historyRepository;
     private final ModelMapper modelMapper;
 
+    // --- YARADILMA METODLARI ---
+
     @Override
     @Transactional
     public TaskResponseDTO createMyTask(TaskRequestDTO request) {
         User currentUser = getCurrentUser();
         Task task = modelMapper.map(request, Task.class);
-
         task.setId(null);
         task.setCreator(currentUser);
-        task.setAssignee(currentUser);
+        task.setAssignee(currentUser); // Özü yaradıbsa, icraçı da özüdür
         task.setStatus(TaskStatus.PENDING);
         task.setCreatedAt(LocalDateTime.now());
         task.setDeleted(false);
-
         return convertToResponse(taskRepository.save(task));
     }
 
@@ -49,44 +49,61 @@ public class TaskServiceImpl implements TaskService {
     public TaskResponseDTO createTaskAsAdmin(TaskRequestDTO request) {
         User creator = getCurrentUser();
         Task task = modelMapper.map(request, Task.class);
-
         task.setId(null);
         task.setCreator(creator);
         task.setStatus(TaskStatus.PENDING);
         task.setCreatedAt(LocalDateTime.now());
         task.setDeleted(false);
 
-        if (request.getAssigneeId() == null) {
-            throw new RuntimeException("Admin üçün assigneeId vacibdir!");
-        }
+        if (request.getAssigneeId() == null) throw new RuntimeException("Admin üçün assigneeId vacibdir!");
 
         User assignee = userRepository.findById(request.getAssigneeId())
                 .orElseThrow(() -> new RuntimeException("Assignee tapılmadı"));
         task.setAssignee(assignee);
-
         return convertToResponse(taskRepository.save(task));
     }
+
+    // --- OXUMA METODLARI ---
 
     @Override
     @Transactional(readOnly = true)
     public List<TaskResponseDTO> getAllActiveTasks() {
-        return taskRepository.findByDeletedFalse().stream()
-                .map(this::convertToResponse)
-                .collect(Collectors.toList());
+        User currentUser = getCurrentUser();
+        List<Task> tasks;
+
+        if (isAdmin()) {
+            tasks = taskRepository.findByDeletedFalse();
+        } else {
+            tasks = taskRepository.findTasksByUserId(currentUser.getId());
+        }
+
+        return tasks.stream().map(this::convertToResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public TaskResponseDTO getTaskById(Long id) {
-        return convertToResponse(taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Task tapılmadı")));
+        Task task = taskRepository.findById(id).orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+
+        // Admin, Creator və ya Assignee deyilsə görə bilməz
+        if (!isAdmin() && !isCreator(task) && !isAssignee(task)) {
+            throw new RuntimeException("Bu taskı görməyə icazəniz yoxdur!");
+        }
+        return convertToResponse(task);
     }
+
+    // --- YENİLƏNMƏ METODLARI (TƏHLÜKƏSİZLİK BURADA) ---
 
     @Override
     @Transactional
     public TaskResponseDTO updateTask(Long id, TaskRequestDTO request) {
-        Task task = taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+        Task task = taskRepository.findById(id).orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+
+        // QAYDA: Yalnız Admin və ya Creator (yaratdığı şəxs) update edə bilər.
+        // Assignee (icraçı) title/deadline-ı dəyişə bilməz!
+        if (!isAdmin() && !isCreator(task)) {
+            throw new RuntimeException("Bu taskı redaktə etməyə icazəniz yoxdur!");
+        }
 
         task.setTitle(request.getTitle());
         task.setDescription(request.getDescription());
@@ -99,32 +116,50 @@ public class TaskServiceImpl implements TaskService {
     @Override
     @Transactional
     public TaskResponseDTO changeStatus(Long taskId, TaskStatus newStatus, String reason) {
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+        Task task = taskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+
+        // QAYDA: Admin, Creator VƏ YA Assignee statusu dəyişə bilər.
+        if (!isAdmin() && !isCreator(task) && !isAssignee(task)) {
+            throw new RuntimeException("Statusu dəyişməyə icazəniz yoxdur!");
+        }
 
         task.setStatus(newStatus);
-
-        // Burada tarixçəyə əlavə etmək üçün history obyektini də saxlaya bilərsən
-
         return convertToResponse(taskRepository.save(task));
     }
 
     @Override
     @Transactional
     public String deleteTask(Long taskId) {
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+        Task task = taskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task tapılmadı"));
+
+        // SİLMƏ: Admin və ya Creator silə bilər
+        if (!isAdmin() && !isCreator(task)) {
+            throw new RuntimeException("Bu taskı silməyə icazəniz yoxdur!");
+        }
 
         task.setDeleted(true);
         taskRepository.save(task);
-
         return "Task ID: " + taskId + " uğurla silindi.";
+    }
+
+    // --- KÖMƏKÇİ METODLAR (DRY - Don't Repeat Yourself) ---
+
+    private boolean isAdmin() {
+        return SecurityContextHolder.getContext().getAuthentication().getAuthorities()
+                .stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    private boolean isCreator(Task task) {
+        return task.getCreator().getId().equals(getCurrentUser().getId());
+    }
+
+    private boolean isAssignee(Task task) {
+        return task.getAssignee() != null && task.getAssignee().getId().equals(getCurrentUser().getId());
     }
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("İstifadəçi tapılmadı"));
+        return userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("İstifadəçi tapılmadı"));
     }
 
     private TaskResponseDTO convertToResponse(Task task) {
@@ -134,3 +169,11 @@ public class TaskServiceImpl implements TaskService {
         return dto;
     }
 }
+
+
+//TODO Nəyi dəyişdik?
+//todo//Helper Metodlar: isAdmin(), isCreator(), isAssignee() metodlarını yaratdıq. Kodun hər yerində eyni SecurityContextHolder yoxlanışını yazmaq əvəzinə bu qısa metodları istifadə edirik.
+//
+//updateTask: İndi burada isAssignee yoxdur. Yəni, user-ə tapşırılan taskın adını və ya deadline-ını dəyişə bilməz, yalnız Admin və ya yaradıcı bunu edə bilər.
+//
+//changeStatus: Burada isAssignee əlavə olunub. Yəni, bir user-ə tapşırıq verilibsə, o, tapşırığın məzmununu dəyişə bilməz, amma statusunu (Pending -> Done) dəyişə bilər.
