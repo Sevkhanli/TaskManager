@@ -17,10 +17,13 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+
+
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
         // Təsdiqlənmə yoxlaması CustomUserDetails-in isEnabled() metoduna keçirildi
         return new CustomUserDetails(user);
     }
+
 }

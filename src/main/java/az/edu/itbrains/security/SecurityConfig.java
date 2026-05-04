@@ -1,14 +1,13 @@
 package az.edu.itbrains.security;
 
 import az.edu.itbrains.handlers.AuthDeniedHandler;
-import az.edu.itbrains.security.JwtAuthFilter;
-import az.edu.itbrains.security.CustomUserDetailsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -30,11 +29,11 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configure(http))
+                .cors(Customizer.withDefaults()) // ✅ FIXED
                 .authorizeHttpRequests(auth -> auth
-                        // Swagger
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -42,46 +41,36 @@ public class SecurityConfig {
                                 "/swagger-resources/**",
                                 "/webjars/**"
                         ).permitAll()
-
-                        // Public
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/v1/hero/active").permitAll()
-                        .requestMatchers("/api/v1/features/public/**").permitAll()
-                        .requestMatchers("/api/v1/contact/**").permitAll()
-                        .requestMatchers("/api/analysis/**").permitAll()
-
-                        // Admin
+                        .requestMatchers("/api/tasks/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/v1/hero/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/features/admin/**").hasRole("ADMIN")
-
-                        // Auth lazım olanlar
-                        .requestMatchers("/api/auth/me", "/api/auth/logout").authenticated()
-
-                        .anyRequest().hasRole("ADMIN")
+                        .anyRequest().authenticated()
                 )
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authDeniedHandler)
                         .accessDeniedHandler(authDeniedHandler)
                 )
-                .authenticationProvider(authenticationProvider())
+                .authenticationProvider(authenticationProvider()) // ✅ OK
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider =
+                new DaoAuthenticationProvider(customUserDetailsService); // ✅ constructor ilə
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
     }
 
     @Bean
-    public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider =
-                new DaoAuthenticationProvider(customUserDetailsService); // <-- əsas fix
-
-        authProvider.setPasswordEncoder(passwordEncoder());
-        return authProvider;
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
 
     @Bean
