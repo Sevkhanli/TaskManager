@@ -3,12 +3,16 @@ package az.edu.itbrains.services.impl;
 import az.edu.itbrains.DTOs.request.AdminTaskRequestDTO;
 import az.edu.itbrains.DTOs.request.UserTaskRequestDTO;
 import az.edu.itbrains.DTOs.response.TaskResponseDTO;
+import az.edu.itbrains.enums.PenaltyStatus;
 import az.edu.itbrains.enums.TaskStatus;
+import az.edu.itbrains.models.Penalty;
 import az.edu.itbrains.models.Task;
 import az.edu.itbrains.models.User;
+import az.edu.itbrains.repositories.PenaltyRepository;
 import az.edu.itbrains.repositories.StatusHistoryRepository;
 import az.edu.itbrains.repositories.TaskRepository;
 import az.edu.itbrains.repositories.UserRepository;
+import az.edu.itbrains.services.PenaltyService;
 import az.edu.itbrains.services.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -27,6 +31,8 @@ public class TaskServiceImpl implements TaskService {
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
     private final StatusHistoryRepository historyRepository;
+    private final PenaltyRepository penaltyRepository;
+    private final PenaltyService penaltyService;
     private final ModelMapper modelMapper;
 
     // --- MƏRKƏZLƏŞDİRİLMİŞ İCAZƏ YOXLAMASI ---
@@ -117,6 +123,25 @@ public class TaskServiceImpl implements TaskService {
     public TaskResponseDTO changeStatus(Long taskId, TaskStatus newStatus, String reason) {
         Task task = taskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task tapılmadı"));
         validatePermission(task, "CHANGE_STATUS");
+
+        // COMPLETED statusuna keçərkən penalty yoxlanması
+        if (newStatus == TaskStatus.COMPLETED) {
+            // Deadline keçibsə və cərimə yoxdursa, cərimə tətbiq et
+            if (task.getDeadline() != null && task.getDeadline().isBefore(LocalDateTime.now())) {
+                // Əvvəlcə cəriməni tətbiq et (rollback olmasın deyə ayrı transaction)
+                try {
+                    penaltyService.applyDeadlineMissedPenalty(taskId);
+                } catch (RuntimeException e) {
+                    if (!e.getMessage().contains("artıq deadline cəriməsi mövcuddur")) {
+                        throw e;
+                    }
+                    // Cərimə artıq varsa, davam et
+                }
+                
+                // Cərimə tətbiq olundu, taskın tamamlanmasına icazə vermə
+                throw new RuntimeException("Deadline keçib! Cərimə tətbiq olundu. Admin cəriməni bağışlayana qədər task tamamlana bilməz.");
+            }
+        }
 
         task.setStatus(newStatus);
         // Gələcəkdə burada StatusHistory-ni qeyd edəcəyik
