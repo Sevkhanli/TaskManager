@@ -7,6 +7,8 @@ import az.edu.itbrains.exceptions.InvalidTokenException;
 import az.edu.itbrains.services.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,31 +18,37 @@ import org.springframework.web.bind.annotation.*;
 @CrossOrigin(origins = "*")
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Tag(name = "Authentication Controller", description = "İstifadəçi qeydiyyatı, giriş və şifrə əməliyyatları")
 public class AuthController {
 
     private final UserService userService;
 
+    @Operation(summary = "Yeni istifadəçi qeydiyyatı")
     @PostMapping("/register")
     public ResponseEntity<AuthResponseDTO> register(@Valid @RequestBody RegisterRequestDTO request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.registerUser(request));
     }
 
+    @Operation(summary = "Sistemə giriş")
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO request) {
         return ResponseEntity.ok(userService.loginUser(request));
     }
 
+    @Operation(summary = "Email təsdiqləmə (OTP)")
     @PostMapping("/verify")
     public ResponseEntity<AuthResponseDTO> verify(@Valid @RequestBody VerifyRequestDTO request) {
         return ResponseEntity.ok(userService.verifyUser(request));
     }
 
+    @Operation(summary = "OTP kodunu yenidən göndər")
     @PostMapping("/resend-otp")
     public ResponseEntity<AuthResponseDTO> resendOtp(@Valid @RequestBody ResendRequestDTO request) {
         userService.resendOtp(request);
         return ResponseEntity.ok(new AuthResponseDTO(true, "Yeni OTP kodu email ünvanınıza göndərildi."));
     }
 
+    @Operation(summary = "Refresh token vasitəsilə yeni access token al")
     @PostMapping("/refresh-token")
     public ResponseEntity<AuthResponseDTO> refreshToken(@RequestHeader("Authorization") String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -52,23 +60,27 @@ public class AuthController {
 
 
 
+    @Operation(summary = "Şifrəni unutdum - sıfırlama kodu göndər")
     @PostMapping("/forgot-password")
     public ResponseEntity<AuthResponseDTO> forgotPassword(@Valid @RequestBody ForgotPasswordRequestDTO request) {
         userService.forgotPassword(request);
         return ResponseEntity.ok(new AuthResponseDTO(true, "Şifrə sıfırlama kodu emailinizə göndərildi."));
     }
 
+    @Operation(summary = "Yeni şifrəni təyin et")
     @PostMapping("/reset-password")
     public ResponseEntity<AuthResponseDTO> resetPassword(@Valid @RequestBody ResetPasswordRequestDTO request) {
         return ResponseEntity.ok(userService.resetPassword(request));
     }
 
+    @Operation(summary = "Şifrə sıfırlama kodunu yenidən göndər")
     @PostMapping("/resend-forgot-password-otp")
     public ResponseEntity<AuthResponseDTO> resendForgotPasswordOtp(@Valid @RequestBody ResendRequestDTO request) {
         userService.resendForgotPasswordOtp(request);
         return ResponseEntity.ok(new AuthResponseDTO(true, "Şifrə sıfırlama kodu yenidən email ünvanınıza göndərildi."));
     }
 
+    @Operation(summary = "Sistemdən çıxış")
     @PostMapping("/logout")
     public ResponseEntity<String> logout(
             @RequestHeader("Authorization") String authHeader,
@@ -79,6 +91,7 @@ public class AuthController {
         return ResponseEntity.ok("Uğurla çıxış edildi.");
     }
 
+    @Operation(summary = "Cari istifadəçi profil məlumatlarını və analizləri gətir")
     @GetMapping("/me")
     public ResponseEntity<AuthResponseDTO> getMyProfile() {
         // 1. Token-dən gələn email məlumatını götürürük
